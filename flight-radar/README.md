@@ -30,23 +30,27 @@ Find your coordinates by right-clicking a spot in Google Maps.
 | `--lat` / `--lon` | Heathrow | Centre of the radar (or env `RADAR_LAT` / `RADAR_LON`) |
 | `--range` | 25 | Radius in nautical miles |
 | `--size` | 480 | Window diameter in px |
-| `--pos 20,20` | | Window position on the desktop (X11 only) |
+| `--pos 20,20` | last spot | Window position on the desktop (normally you just drag it) |
 | `--fullscreen` | off | Fill the screen, which suits a round display |
 | `--rotate` | 0 | Rotate output 90/180/270 for a mounted screen |
 | `--interval` | 5 | Seconds between fetches |
 | `--demo` | off | Fake aircraft |
 
-**Controls:** `+`/`-` or the mouse wheel zoom (5–250 nm). A tap or click cycles the range,
+**Controls:** `+`/`-` or the mouse wheel zoom (5–250 nm). Drag the circle to move it, and it
+reopens in the same spot next time. A click (without dragging) cycles the range,
 `L` toggles labels, and `Esc`/`Q` quits.
 
 ## Start on boot
 
-**Desktop Pi.** The radar appears as a little circle in the corner. Edit the coordinates
-in `flight-radar.desktop`, then run:
+**Desktop Pi.** One command installs pygame, adds Flight Radar to the app menu, sets it to
+start when you log in, and launches it:
 
 ```bash
-mkdir -p ~/.config/autostart && cp flight-radar.desktop ~/.config/autostart/
+./install.sh <lat> <lon> [range_nm] [size_px]     # e.g. ./install.sh 60.3172 24.9633 25 360
+./install.sh --uninstall                          # remove the menu and autostart entries
 ```
+
+Run it again with new values to change your location or size.
 
 **Headless Pi with a round screen.** Examples are the Pimoroni HyperPixel 2.1 Round
 (480×480) or a Waveshare round HDMI/DSI panel. Edit `flight-radar.service`, then run:
@@ -62,4 +66,5 @@ sudo systemctl enable --now flight-radar
   airplanes.live allows non-commercial use and roughly 1 request per second, so 5 s polling is fine.
 - Want your *own* data? Add an RTL-SDR dongle and run `readsb`/`tar1090` on the Pi. It serves
   the same JSON format at `http://localhost/tar1090/data/aircraft.json`, which could be added as a source in `feeds.py`.
-- On Wayland desktops (Pi OS Bookworm), the window position is chosen by the compositor.
+- If the window won't stay where you drag it on the newer Pi OS desktop (Wayland), try launching
+  with `SDL_VIDEODRIVER=x11` set in front of the command.

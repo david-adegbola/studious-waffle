@@ -8,12 +8,14 @@ refreshed from live ADS-B data over Wi-Fi every 5 seconds.
     python3 radar.py --lat 60.17 --lon 24.94 --fullscreen   # round HAT/screen on the Pi
     python3 radar.py --demo                             # simulated traffic, no network
 
-Keys: +/- or mouse wheel zoom, tap/click cycles range, L toggles labels, Esc/Q quits.
+Keys: +/- or mouse wheel zoom, click cycles range, drag moves the window,
+L toggles labels, Esc/Q quits.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import time
@@ -33,6 +35,10 @@ GROUND = (230, 190, 60)
 HOME = (255, 90, 90)
 WARN = (255, 120, 80)
 
+STATE_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+                          "flight-radar", "window.json")
+DRAG_THRESHOLD = 4  # px of mouse travel before a click becomes a window drag
+
 RANGES_NM = [5, 10, 15, 25, 40, 60, 100, 150, 250]
 SWEEP_PERIOD = 4.0  # seconds per revolution
 
@@ -51,7 +57,7 @@ def parse_args():
     p.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270],
                    help="rotate the output for a mounted display")
     p.add_argument("--pos", default=os.environ.get("RADAR_POS", ""),
-                   help="window position on the desktop, e.g. 20,20")
+                   help="window position on the desktop, e.g. 20,20 (default: where you last dragged it)")
     p.add_argument("--demo", action="store_true", help="simulated aircraft, no network needed")
     return p.parse_args()
 
@@ -79,6 +85,13 @@ class Radar:
         self.args = args
         self.fullscreen = args.fullscreen
         self.display = self._open_display()
+        self.window = self._sdl_window()
+        if self.window and not args.pos and not self.fullscreen:
+            saved = load_saved_position()
+            if saved:
+                self.window.position = saved
+        self._drag_anchor = None  # where the mouse went down, in window coords
+        self._dragging = False
         self.size = min(self.display.get_size()) if self.fullscreen else args.size
         self.canvas = pygame.Surface((self.size, self.size))
         self.cx = self.cy = self.size // 2
@@ -103,6 +116,14 @@ class Radar:
         if self.fullscreen:
             return pg.display.set_mode((0, 0), pg.FULLSCREEN)
         return pg.display.set_mode((self.args.size, self.args.size), pg.NOFRAME)
+
+    def _sdl_window(self):
+        """Handle for moving the borderless window. None if unsupported (old pygame)."""
+        try:
+            from pygame._sdl2.video import Window
+            return Window.from_display_module()
+        except Exception:
+            return None
 
     def _build_static_layers(self):
         """Pre-render the parts that only change when the range changes."""
@@ -275,17 +296,54 @@ class Radar:
                             self.show_labels = not self.show_labels
                     if ev.type == pg.MOUSEWHEEL:
                         self.set_range(-1 if ev.y > 0 else 1)
-                    # Tap/click cycles through ranges (handy on a touch-screen round display)
-                    if ev.type == pg.MOUSEBUTTONUP and ev.button == 1:
-                        if self.range_nm >= RANGES_NM[-1]:
-                            self.set_range(-len(RANGES_NM))
-                        else:
-                            self.set_range(+1)
+                    self.handle_mouse(ev)
                 self.draw()
                 self.clock.tick(30)
         finally:
+            if self.window and not self.fullscreen:
+                save_position(self.window.position)
             self.feed.stop()
             pg.quit()
+
+    def handle_mouse(self, ev):
+        """Drag to move the borderless window; a plain click cycles the range."""
+        pg = self.pg
+        if ev.type == pg.MOUSEBUTTONDOWN and ev.button == 1:
+            self._drag_anchor, self._dragging = ev.pos, False
+        elif ev.type == pg.MOUSEMOTION and self._drag_anchor and ev.buttons[0]:
+            dx, dy = ev.pos[0] - self._drag_anchor[0], ev.pos[1] - self._drag_anchor[1]
+            if not self._dragging and math.hypot(dx, dy) >= DRAG_THRESHOLD:
+                self._dragging = bool(self.window) and not self.fullscreen
+            if self._dragging:
+                wx, wy = self.window.position
+                self.window.position = (wx + dx, wy + dy)
+        elif ev.type == pg.MOUSEBUTTONUP and ev.button == 1:
+            if not self._dragging and self._drag_anchor:
+                if self.range_nm >= RANGES_NM[-1]:
+                    self.set_range(-len(RANGES_NM))
+                else:
+                    self.set_range(+1)
+            elif self._dragging:
+                save_position(self.window.position)
+            self._drag_anchor, self._dragging = None, False
+
+
+def load_saved_position():
+    try:
+        with open(STATE_FILE) as f:
+            x, y = json.load(f)["pos"]
+        return int(x), int(y)
+    except Exception:
+        return None
+
+
+def save_position(pos):
+    try:
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+        with open(STATE_FILE, "w") as f:
+            json.dump({"pos": list(pos)}, f)
+    except OSError:
+        pass
 
 
 def main():
