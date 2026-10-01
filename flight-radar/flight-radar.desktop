@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Flight Radar
+Comment=Tiny round live flight radar
+# Edit the coordinates to your location, then copy to ~/.config/autostart/
+Exec=python3 /home/pi/flight-radar/radar.py --lat 51.4700 --lon -0.4543 --range 25 --size 360 --pos 20,20
+Terminal=false

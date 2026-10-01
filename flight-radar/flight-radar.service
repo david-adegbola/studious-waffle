@@ -1,0 +1,19 @@
+# For a Pi with no desktop (Raspberry Pi OS Lite) driving a round screen directly.
+# Edit User, paths and coordinates, then:
+#   sudo cp flight-radar.service /etc/systemd/system/
+#   sudo systemctl enable --now flight-radar
+[Unit]
+Description=Tiny round flight radar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/flight-radar
+Environment=SDL_VIDEODRIVER=kmsdrm
+ExecStart=/usr/bin/python3 radar.py --lat 51.4700 --lon -0.4543 --range 25 --fullscreen
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
